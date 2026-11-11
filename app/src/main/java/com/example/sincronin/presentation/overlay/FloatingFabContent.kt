@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
@@ -42,7 +43,7 @@ import com.example.sincronin.ui.theme.SincroninTheme
 private val FabSize = 56.dp
 
 /** Opacidad del botón en reposo, para no llamar la atención sobre un video. */
-private const val IdleAlpha = 0.55f
+private const val IdleAlpha = 0.35f
 
 /** Color del icono del botón: blanco, para contrastar sobre [FabDark]. */
 private val FabOnDark = Color.White
@@ -187,11 +188,12 @@ fun FloatingFabContent(
             modifier = Modifier
                 .size(FabSize)
                 .offset(x = shift.value)
+                // La opacidad envuelve sombra, fondo e icono: en reposo se
+                // desvanece el botón entero, no solo el círculo.
+                .alpha(alpha.coerceIn(0f, 1f))
                 .shadow(elevation = 8.dp, shape = CircleShape, clip = false)
                 .clip(CircleShape)
-                .background(
-                    FabDark.copy(alpha = alpha.coerceIn(0f, 1f))
-                ),
+                .background(FabDark),
             contentAlignment = Alignment.Center
         ) {
             Icon(

@@ -594,7 +594,7 @@ class FloatingOverlayService :
         private const val SNAP_THRESHOLD_DP = 28
 
         /** Tiempo sin usarse antes de volver a atenuarse. */
-        private const val IDLE_TIMEOUT_MILLIS = 4_000L
+        private const val IDLE_TIMEOUT_MILLIS = 1_500L
 
         private const val SNAP_ANIMATION_MILLIS = 180L
 
