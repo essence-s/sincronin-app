@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.lerp as lerpDp
 import androidx.compose.ui.graphics.lerp as lerpColor
+import com.example.sincronin.domain.link.LinkStatus
 import com.example.sincronin.domain.pairing.PairingError
 import com.example.sincronin.domain.pairing.PairingState
 import com.example.sincronin.domain.pairing.PairingStatus
@@ -432,7 +433,7 @@ private fun StatusDot(pairing: PairingState) {
         modifier = Modifier
             .size(6.dp)
             .clip(CircleShape)
-            .background(statusColor(pairing.status))
+            .background(statusColor(pairing))
     )
 }
 
@@ -443,23 +444,32 @@ private fun StatusLine(pairing: PairingState) {
         Spacer(Modifier.width(6.dp))
         Text(
             text = statusText(pairing),
-            color = statusColor(pairing.status),
+            color = statusColor(pairing),
             fontSize = 11.sp,
             maxLines = 1
         )
     }
 }
 
-private fun statusColor(status: PairingStatus): Color = when (status) {
+private fun statusColor(pairing: PairingState): Color = when (val status = pairing.status) {
     PairingStatus.Idle, PairingStatus.Waiting -> PanelMuted
-    PairingStatus.Connected -> PanelAccent
+    PairingStatus.Connected -> when (pairing.link.status) {
+        LinkStatus.Ready -> PanelAccent
+        LinkStatus.Failed -> PanelError
+        LinkStatus.Closed, LinkStatus.Negotiating -> PanelMuted
+    }
     is PairingStatus.Failed -> PanelError
 }
 
 private fun statusText(pairing: PairingState): String = when (val status = pairing.status) {
     PairingStatus.Idle -> "Escribí el código del otro equipo"
     PairingStatus.Waiting -> "${roleLabel(pairing)} · esperando al otro equipo"
-    PairingStatus.Connected -> "${roleLabel(pairing)} · ${pairing.people} en la sala"
+    PairingStatus.Connected -> when (pairing.link.status) {
+        LinkStatus.Negotiating -> "${roleLabel(pairing)} · enlazando…"
+        LinkStatus.Ready -> "${roleLabel(pairing)} · enlace listo"
+        LinkStatus.Failed -> "No se pudo enlazar con el otro equipo"
+        LinkStatus.Closed -> "${roleLabel(pairing)} · ${pairing.people} en la sala"
+    }
     is PairingStatus.Failed -> when (status.error) {
         PairingError.InvalidCode -> "Ese código no es válido"
         PairingError.ServerUnreachable -> "No se pudo conectar con el servidor"

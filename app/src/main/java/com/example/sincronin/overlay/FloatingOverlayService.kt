@@ -35,6 +35,7 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.example.sincronin.MainActivity
 import com.example.sincronin.R
+import com.example.sincronin.adapters.WebRtcPeerTransport
 import com.example.sincronin.presentation.fabmenu.FabMenuViewModel
 import com.example.sincronin.presentation.overlay.FloatingFabContent
 import com.example.sincronin.presentation.overlay.FloatingOverlayContent
@@ -201,7 +202,11 @@ class FloatingOverlayService :
     }
 
     private fun createFabWindow() {
-        viewModel = FabMenuViewModel()
+        // El enlace WebRTC necesita contexto para cargar sus librerías nativas;
+        // el servicio es quien lo crea y quien lo cierra al morir.
+        viewModel = FabMenuViewModel(
+            newPeer = { onSignal -> WebRtcPeerTransport(this, onSignal) }
+        )
 
         initFabPosition()
         fabRect.value = fabRectInSafeArea()

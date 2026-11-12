@@ -1,5 +1,6 @@
 package com.example.sincronin.domain.pairing
 
+import com.example.sincronin.domain.link.LinkState
 import com.example.sincronin.domain.room.RoomCode
 
 /** Quién comparte la reproducción: el primero que entró a la sala. */
@@ -31,7 +32,9 @@ data class PairingState(
     val status: PairingStatus = PairingStatus.Idle,
     val room: RoomCode? = null,
     val role: Role? = null,
-    val people: Int = 0
+    val people: Int = 0,
+    /** Canal directo con el otro equipo, independiente de la sala. */
+    val link: LinkState = LinkState()
 ) {
 
     /** Intento de entrar: la sala ya se conoce, el rol todavía no. */
@@ -39,17 +42,24 @@ data class PairingState(
         PairingState(status = PairingStatus.Waiting, room = room)
 
     /** El servidor confirmó la entrada y dice cuántas personas hay ahora. */
-    fun joined(people: Int): PairingState = copy(
-        people = people,
-        role = if (people <= 1) Role.Host else Role.Guest,
-        status = if (people <= 1) PairingStatus.Waiting else PairingStatus.Connected
-    )
+    fun joined(people: Int): PairingState {
+        val alone = people <= 1
+        return copy(
+            people = people,
+            role = if (alone) Role.Host else Role.Guest,
+            status = if (alone) PairingStatus.Waiting else PairingStatus.Connected,
+            // Sin par no hay enlace: al salir el otro equipo se cierra.
+            link = if (alone) LinkState() else link
+        )
+    }
 
     /** No se pudo entrar; la sala se conserva para ofrecer reintentar. */
     fun failed(error: PairingError): PairingState =
         copy(status = PairingStatus.Failed(error))
 
-    /** Reintento sobre la misma sala. */
-    fun retrying(): PairingState =
-        copy(status = if (room == null) PairingStatus.Idle else PairingStatus.Waiting)
+    /** Reintento sobre la misma sala; el enlace vuelve a empezar de cero. */
+    fun retrying(): PairingState = copy(
+        status = if (room == null) PairingStatus.Idle else PairingStatus.Waiting,
+        link = link.again()
+    )
 }

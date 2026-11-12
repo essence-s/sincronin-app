@@ -1,5 +1,7 @@
 package com.example.sincronin.domain.pairing
 
+import com.example.sincronin.domain.link.LinkState
+import com.example.sincronin.domain.link.LinkStatus
 import com.example.sincronin.domain.room.RoomCode
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -21,6 +23,22 @@ class PairingStateTest {
         assertEquals(Role.Guest, withPeer.role)
         assertEquals(PairingStatus.Connected, withPeer.status)
         assertEquals(2, withPeer.people)
+    }
+
+    @Test
+    fun `salir de la sala cierra el enlace y deja esperando`() {
+        val connected = PairingState()
+            .joining(code)
+            .joined(people = 2)
+            .copy(link = LinkState(LinkStatus.Ready, peer = 7))
+
+        assertEquals(LinkStatus.Ready, connected.link.status)
+
+        val alone = connected.joined(people = 1)
+
+        assertEquals(PairingStatus.Waiting, alone.status)
+        assertEquals(LinkStatus.Closed, alone.link.status)
+        assertEquals(null, alone.link.peer)
     }
 
     @Test
