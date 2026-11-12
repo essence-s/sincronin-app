@@ -311,6 +311,8 @@ class FloatingOverlayService :
                         state = state,
                         fabRectPx = fabRect.value,
                         onClose = viewModel::onDismiss,
+                        onCodeChange = viewModel::onCodeChange,
+                        onJoin = viewModel::onJoin,
                         onCollapseFinished = { fabView.post { detachPanel() } }
                     )
                 }
@@ -322,7 +324,10 @@ class FloatingOverlayService :
                 view,
                 overlayParams(
                     WindowManager.LayoutParams.MATCH_PARENT,
-                    WindowManager.LayoutParams.MATCH_PARENT
+                    WindowManager.LayoutParams.MATCH_PARENT,
+                    // El panel tiene un campo de texto: sin foco propio la
+                    // ventana no recibe el teclado.
+                    focusable = true
                 )
             )
         }.isSuccess
@@ -481,20 +486,35 @@ class FloatingOverlayService :
         return IntRect(left, top, left + size, top + size)
     }
 
-    private fun overlayParams(width: Int, height: Int): WindowManager.LayoutParams =
+    private fun overlayParams(
+        width: Int,
+        height: Int,
+        focusable: Boolean = false
+    ): WindowManager.LayoutParams =
         WindowManager.LayoutParams(
             width,
             height,
             overlayWindowType(),
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                if (focusable) 0 else WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
+            if (focusable) {
+                // Con el teclado abierto el panel se recoloca dentro del área
+                // que queda libre en vez de quedar debajo.
+                softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 // Toda ventana vive dentro del área segura: sus coordenadas y
                 // las del FAB comparten origen y el panel encaja con el botón.
-                setFitInsetsTypes(WindowInsets.Type.systemBars())
+                setFitInsetsTypes(
+                    if (focusable) {
+                        WindowInsets.Type.systemBars() or WindowInsets.Type.ime()
+                    } else {
+                        WindowInsets.Type.systemBars()
+                    }
+                )
             }
         }
 

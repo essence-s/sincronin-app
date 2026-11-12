@@ -17,6 +17,10 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Servidor de señalización para desarrollo. Mientras no haya una
+        // pantalla para configurarlo, es una constante del build.
+        buildConfigField("String", "SIGNAL_URL", "\"ws://192.168.1.51:8787/ws\"")
     }
 
     buildTypes {
@@ -33,6 +37,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -48,6 +53,7 @@ dependencies {
     implementation(libs.androidx.savedstate.ktx)
     implementation(libs.androidx.compose.animation)
     implementation(libs.androidx.compose.material.icons.core)
+    implementation(libs.okhttp)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

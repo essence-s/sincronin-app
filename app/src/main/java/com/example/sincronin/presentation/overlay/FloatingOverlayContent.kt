@@ -15,6 +15,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntRect
@@ -39,6 +41,14 @@ private val CollapseSpec = spring<Float>(
     visibilityThreshold = 0.001f
 )
 
+/**
+ * Velo del fondo: un degradado de negro que se apaga hacia abajo, muy suave.
+ * No es un color, solo oscurece lo que hay debajo para que el panel resalte.
+ */
+private val ScrimGradient = Brush.verticalGradient(
+    listOf(Color.Black, Color.Black.copy(alpha = 0.45f))
+)
+
 private const val ScrimMaxAlpha = 0.32f
 
 /**
@@ -49,13 +59,16 @@ private const val ScrimMaxAlpha = 0.32f
  * cierre devuelve el panel sobre el botón ([onCollapseFinished]), así que la
  * expansión siempre nace del sitio donde está el FAB ([fabRectPx]).
  *
- * [onClose] se dispara al tocar el fondo oscurecido.
+ * [onClose] se dispara al tocar el fondo oscurecido; los demás eventos son los
+ * del panel de Conexión y los resuelve el ViewModel.
  */
 @Composable
 fun FloatingOverlayContent(
     state: FabMenuUiState,
     fabRectPx: IntRect,
     onClose: () -> Unit,
+    onCodeChange: (String) -> Unit,
+    onJoin: () -> Unit,
     onCollapseFinished: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -85,7 +98,8 @@ fun FloatingOverlayContent(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = scrimAlpha))
+                .alpha(scrimAlpha)
+                .background(ScrimGradient)
                 .clickable(
                     interactionSource = interactionSource,
                     indication = null,
@@ -98,7 +112,10 @@ fun FloatingOverlayContent(
             progress = progress.value,
             interactive = state.isExpanded && settled,
             fabRectPx = fabRectPx,
+            state = state,
             onClose = onClose,
+            onCodeChange = onCodeChange,
+            onJoin = onJoin,
             modifier = Modifier.fillMaxSize()
         )
     }
@@ -112,6 +129,8 @@ private fun FloatingOverlayContentPreview() {
             state = FabMenuUiState(isExpanded = true),
             fabRectPx = IntRect(left = 300, top = 700, right = 356, bottom = 756),
             onClose = {},
+            onCodeChange = {},
+            onJoin = {},
             onCollapseFinished = {}
         )
     }
