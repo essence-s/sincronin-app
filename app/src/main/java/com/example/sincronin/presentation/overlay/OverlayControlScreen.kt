@@ -32,6 +32,8 @@ fun OverlayControlScreen(
     onGrantPermission: () -> Unit,
     onStartOverlay: () -> Unit,
     onStopOverlay: () -> Unit,
+    needsLocalNetwork: Boolean = false,
+    onGrantLocalNetwork: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -60,6 +62,23 @@ fun OverlayControlScreen(
         )
 
         Spacer(Modifier.height(28.dp))
+
+        // Sin este permiso el panel diría «no se pudo conectar» sin más pista:
+        // las conexiones a la LAN se cortan antes de salir del móvil.
+        if (needsLocalNetwork) {
+            Text(
+                text = "Android pide permiso para acceder a la red local. Sin él, el panel no " +
+                    "puede alcanzar el servidor de tu red.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlinedButton(onClick = onGrantLocalNetwork) {
+                Text("Dar acceso a la red local")
+            }
+            Spacer(Modifier.height(16.dp))
+        }
 
         when {
             !hasOverlayPermission -> {
