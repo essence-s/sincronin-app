@@ -61,11 +61,14 @@ import kotlin.math.roundToInt
  * 1. **En reposo**: atenuado, discreto sobre un video.
  * 2. **Despierto**: opaco. Tocar el botón abre el menú, esté atenuado o no:
  *    la atenuación es solo visual y nunca cuesta un toque de más.
- * 3. **Lengüeta**: si lo sueltas cerca de un lateral, la ventana se corre hasta
- *    el borde y el contenido dibuja el círculo medio fuera, recortado por la
- *    ventana: solo se ve la mitad. Un toque la abre igual que el botón entero.
- *    La ventana se excluye del gesto de retroceso del sistema, así que arrastrar
- *    o tocar el botón pegado al borde no te manda atrás.
+ * 3. **Acoplado**: si lo sueltas cerca de un lateral, la ventana se corre media
+ *    ventana fuera de la pantalla ([WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS]),
+ *    así que es el sistema quien recorta el dibujo y el toque a la vez: se ve
+ *    la mitad del círculo y esa misma mitad es la que responde. No hay zona de
+ *    presion fuera del botón ni mitad visible que no se pueda tocar. Un toque
+ *    lo abre igual que el botón entero. La ventana se excluye del gesto de
+ *    retroceso del sistema, así que arrastrar o tocar el botón pegado al borde
+ *    no te manda atrás.
  *
  * Al pulsarlo con el botón despierto se abre el menú en **otra ventana** que
  * ocupa el área segura completa, para oscurecer el fondo y capturar el toque.
@@ -110,22 +113,15 @@ class FloatingOverlayService :
     private val peekSide = mutableStateOf(0)
 
     /**
-     * Cuánto se ha sacado la lengüeta con el dedo, en px (0..[halfWindowPx]).
-     *
-     * Mientras la lengüeta está puesta, el arrastre no mueve la ventana: saca el
-     * círculo del borde. Así el recorte de la ventana cae siempre justo en el
-     * borde de la pantalla y el botón no se ve cortado, y el círculo queda
-     * pegado al dedo hasta que está entero; a partir de ahí sí se mueve la
-     * ventana.
+     * Media ventana en px: lo que la ventana se sale de la pantalla al
+     * acoplarse, que es justo lo que deja ver media circunferencia.
      */
-    private val peekPull = mutableStateOf(0f)
-
-    /** Media ventana en px: lo que hay que sacar la lengüeta para verla entera. */
     private val halfWindowPx: Float get() = dp(FAB_WINDOW_SIZE_DP) / 2f
 
     /**
-     * Lateral que tenía la lengüeta cuando se abrió el menú. Al cerrarlo el
-     * botón vuelve a esconderse ahí en vez de quedarse entero junto al borde.
+     * Lateral al que estaba acoplado el botón cuando se abrió el menú. Al
+     * cerrarlo vuelve a salirse medio fuera de ese borde en vez de quedarse
+     * entero junto al lateral.
      */
     private var restorePeekSide = 0
 
@@ -136,7 +132,7 @@ class FloatingOverlayService :
     private var idleJob: Job? = null
     private var snapAnimator: ValueAnimator? = null
 
-    /** Apertura del menú que espera a que la lengüeta vuelva dentro. */
+    /** Apertura del menú que espera a que el botón vuelva a entrar entero. */
     private val pendingOpen = Runnable {
         if (!viewModel.uiState.value.isExpanded) viewModel.onFabClick()
     }
@@ -150,6 +146,10 @@ class FloatingOverlayService :
         overlayParams(dp(FAB_WINDOW_SIZE_DP), dp(FAB_WINDOW_SIZE_DP)).apply {
             x = fabX.roundToInt()
             y = fabY.roundToInt()
+            // Deja que la ventana se salga de la pantalla al acoplarse. Sin
+            // este flag el sistema la recorta al borde y el botón nunca podría
+            // quedar medio fuera.
+            flags = flags or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
         }
     }
 
@@ -175,10 +175,11 @@ class FloatingOverlayService :
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         // Al girar la pantalla el área útil cambia: devolvemos el botón dentro o
-        // recalculamos la lengüeta con el ancho nuevo.
+        // recalculamos su posición acoplada con el ancho nuevo.
         if (!fabAttached) return
         if (peekSide.value != 0) {
-            fabX = edgeX(peekSide.value)
+            fabX = dockedX(peekSide.value)
+            fabY = fabY.coerceIn(0f, maxFabY())
         } else {
             clampFabPosition()
         }
@@ -212,8 +213,6 @@ class FloatingOverlayService :
                 SincroninTheme {
                     FloatingFabContent(
                         idle = fabIdle.value,
-                        peekSide = peekSide.value,
-                        peekPull = (peekPull.value / halfWindowPx).coerceIn(0f, 1f),
                         // Se actúa en el siguiente ciclo: añadir una ventana
                         // dentro del mismo evento de toque puede cortarlo.
                         onFabClick = { post { onFabTapped() } },
@@ -241,8 +240,8 @@ class FloatingOverlayService :
      * Saca la huella del botón del gesto de retroceso del sistema.
      *
      * Con navegación por gestos, deslizar desde el borde izquierdo o derecho
-     * navega atrás. Como el botón (y sobre todo la lengüeta) vive justo en ese
-     * borde, el sistema se quedaba con el gesto en vez de dejarlo al botón.
+     * navega atrás. Como el botón acoplado vive justo en ese borde, el sistema
+     * se quedaba con el gesto en vez de dejarlo al botón.
      * [android.view.View.setSystemGestureExclusionRects] marca la ventana como
      * zona que no debe ser interceptada: Android respeta hasta 200 dp por
      * lateral, así que una ventana de [FAB_WINDOW_SIZE_DP] entra de sobra.
@@ -263,21 +262,21 @@ class FloatingOverlayService :
     /**
      * Un toque en el botón abre el menú, también estando atenuado.
      *
-     * Si estaba como lengüeta, primero se devuelve el círculo al centro de su
-     * ventana y el menú se abre cuando ya llegó. Abrirlo en el mismo instante
-     * hacía que el panel naciera de la mitad que asomaba (pegada al borde) en
-     * vez de nacer del botón que ya se ve dentro.
+     * Si estaba acoplado al borde, primero se mete entero en la pantalla y el
+     * menú se abre cuando ya llegó. Abrirlo en el mismo instante hacía que el
+     * panel naciera de la mitad que asomaba (pegada al borde) en vez de nacer
+     * del círculo completo.
      */
     private fun onFabTapped() {
         if (peekSide.value != 0) {
-            // Se recuerda el lado para devolver la lengüeta al cerrar el menú.
-            restorePeekSide = peekSide.value
-            peekPull.value = 0f
+            // Se recuerda el lado para devolver el botón al borde al cerrar.
+            val side = peekSide.value
+            restorePeekSide = side
             peekSide.value = 0
             wakeFab()
-            // Refresca fabRect: el panel se ancla a esta posición, no a la de
-            // la lengüeta, que estaba desplazada media ventana.
-            applyFabPosition()
+            // Se mete entero en la pantalla antes de abrir: el panel nace del
+            // círculo completo, no de la mitad que asoma en el borde.
+            animateFabX(if (side < 0) 0f else maxFabX())
             fabView.removeCallbacks(pendingOpen)
             fabView.postDelayed(pendingOpen, SNAP_ANIMATION_MILLIS + 20L)
             return
@@ -339,21 +338,18 @@ class FloatingOverlayService :
         runCatching { windowManager.removeView(view) }
         // El menú acaba de cerrarse: el botón sigue despierto unos segundos.
         wakeFab()
-        // Y si el menú se abrió desde la lengüeta, vuelve a media pantalla
-        // fuera: se cierra sin dejar el botón entero pegado al lateral.
+        // Y si el menú se abrió estando acoplado, vuelve a quedar medio fuera
+        // del lateral: se cierra sin dejar el botón entero pegado al borde.
         restorePeek()
     }
 
-    /** Devuelve el botón a la lengüeta desde la que se abrió el menú. */
+    /** Devuelve el botón al borde desde el que se abrió el menú. */
     private fun restorePeek() {
         val side = restorePeekSide
         restorePeekSide = 0
         if (side == 0) return
-        peekPull.value = 0f
         peekSide.value = side
-        // La ventana ya está en el borde; lo que se mueve es el círculo dentro
-        // de ella, así que basta con resincronizar el rectángulo del panel.
-        applyFabPosition()
+        animateFabX(dockedX(side))
     }
 
     /** Saca el botón a pantalla completa y reinicia el temporizador de reposo. */
@@ -366,49 +362,41 @@ class FloatingOverlayService :
         }
     }
 
-    /** Mueve la ventana del botón con el dedo, sin salirse del área segura. */
+    /**
+     * Mueve la ventana del botón con el dedo.
+     *
+     * El movimiento es uno a uno con el dedo, también al salir del borde: lo
+     * único que hay que hacer es sumar el desplazamiento a la posición de la
+     * ventana, sin animación ni desfase. Se deja llegar media ventana fuera de
+     * la pantalla por cada lado para que el acople sea solo la posición final
+     * y no un salto.
+     */
     private fun onFabDrag(offset: Offset) {
         if (!fabAttached) return
 
         snapAnimator?.cancel()
-        // Con la lengüeta puesta el primer movimiento no mueve la ventana: saca
-        // el círculo del borde. Solo el sobrante (y cualquier movimiento una
-        // vez que la lengüeta está fuera) desplaza la ventana.
-        val side = peekSide.value
-        var movementX = offset.x
-        if (side != 0) {
-            val inward = offset.x * -side
-            val pending = halfWindowPx - peekPull.value
-            val consumed = inward.coerceIn(0f, pending)
-            peekPull.value = (peekPull.value + consumed).coerceIn(0f, halfWindowPx)
-            movementX = offset.x + side * consumed
-            if (peekPull.value >= halfWindowPx) peekSide.value = 0
-        }
-        // Movido a mano: ya no hay lengüeta que recuperar al cerrar.
+        // Movido a mano: deja de estar acoplado y no hay borde que recuperar
+        // al cerrar el menú.
+        peekSide.value = 0
         restorePeekSide = 0
 
-        val size = dp(FAB_WINDOW_SIZE_DP)
-        val area = safeArea()
-        val maxX = (area.width().toFloat() - size).coerceAtLeast(0f)
-        val maxY = (area.height().toFloat() - size).coerceAtLeast(0f)
-        fabX = (fabX + movementX).coerceIn(0f, maxX)
-        fabY = (fabY + offset.y).coerceIn(0f, maxY)
+        fabX = (fabX + offset.x).coerceIn(-halfWindowPx, maxFabX() + halfWindowPx)
+        fabY = (fabY + offset.y).coerceIn(0f, maxFabY())
         applyFabPosition()
     }
 
-    /** Al soltar: si quedó muy cerca de un lateral, se pega y deja una lengüeta. */
+    /** Al soltar: si quedó muy cerca de un lateral, se acopla a ese borde. */
     private fun onFabDragEnd() {
         if (!fabAttached) return
 
-        // Si se soltó a medio sacar, la lengüeta vuelve a su sitio de golpe.
-        peekPull.value = 0f
         val maxX = maxFabX()
         val threshold = dp(SNAP_THRESHOLD_DP).toFloat()
         when {
-            fabX <= threshold -> snapToEdge(side = -1)
-            fabX >= maxX - threshold -> snapToEdge(side = 1)
+            fabX <= threshold -> dockToEdge(side = -1)
+            fabX >= maxX - threshold -> dockToEdge(side = 1)
             else -> {
                 peekSide.value = 0
+                clampFabPosition()
                 applyFabPosition()
             }
         }
@@ -416,19 +404,26 @@ class FloatingOverlayService :
     }
 
     /**
-     * Pega la lengüeta a un lateral. La ventana se queda **dentro** de la
-     * pantalla (el sistema la recorta si se manda a coordenadas negativas sin
-     * FLAG_LAYOUT_NO_LIMITS); es el contenido el que dibuja el círculo medio
-     * fuera y la propia ventana lo recorta.
+     * Acopla el botón a un lateral corriendo la ventana media ventana fuera de
+     * la pantalla.
+     *
+     * Al salirse la ventana (FLAG_LAYOUT_NO_LIMITS), es el sistema quien corta
+     * el dibujo **y** la zona táctil en el borde real de la pantalla, así que
+     * la mitad que se ve es exactamente la mitad que responde al toque. El
+     * contenido no se desplaza dentro de la ventana: si se moviera solo lo
+     * dibujado, la zona de presión se quedaría donde estaba el botón entero.
      */
-    private fun snapToEdge(side: Int) {
-        peekPull.value = 0f
+    private fun dockToEdge(side: Int) {
         peekSide.value = side
-        animateFabX(edgeX(side))
+        animateFabX(dockedX(side))
     }
 
-    /** Posición de la ventana pegada al borde: totalmente dentro de la pantalla. */
-    private fun edgeX(side: Int): Float = if (side < 0) 0f else maxFabX()
+    /** Posición acoplada: media ventana dentro del área segura, media fuera. */
+    private fun dockedX(side: Int): Float =
+        if (side < 0) -halfWindowPx else maxFabX() + halfWindowPx
+
+    private fun maxFabY(): Float =
+        (safeArea().height().toFloat() - dp(FAB_WINDOW_SIZE_DP)).coerceAtLeast(0f)
 
     private fun animateFabX(target: Float) {
         snapAnimator?.cancel()
@@ -475,19 +470,13 @@ class FloatingOverlayService :
 
     /**
      * Dónde se ve el círculo dentro de la ventana pequeña, en px del área
-     * segura. Cuando es lengüeta el contenido lo dibuja desplazado media
-     * ventana, así que el rectángulo se desplaza igual: el panel debe nacer del
-     * círculo que se ve, no de la posición que tendría estando entero.
+     * segura. El contenido siempre está centrado en la ventana, así que basta
+     * con sumar el margen del FAB; al acoplarse es la ventana entera la que se
+     * sale media ventana, y el rectángulo se sale con ella.
      */
     private fun fabRectInSafeArea(): IntRect {
         val size = dp(FAB_SIZE_DP)
-        val halfWindow = dp(FAB_WINDOW_SIZE_DP) / 2
-        val shift = when (peekSide.value) {
-            -1 -> -halfWindow
-            1 -> halfWindow
-            else -> 0
-        }
-        val left = fabX.roundToInt() + dp(FAB_INSET_DP) + shift
+        val left = fabX.roundToInt() + dp(FAB_INSET_DP)
         val top = fabY.roundToInt() + dp(FAB_INSET_DP)
         return IntRect(left, top, left + size, top + size)
     }
