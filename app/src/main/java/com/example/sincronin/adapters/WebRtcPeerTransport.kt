@@ -100,6 +100,20 @@ class WebRtcPeerTransport(
         )
     }
 
+    override fun restart() {
+        val pc = connection ?: return
+        // restartIce() marca la próxima oferta como reinicio de ICE; así se
+        // conservan los candidatos y el canal no se recrea.
+        pc.restartIce()
+        pc.createOffer(
+            OnSdp { offer ->
+                pc.setLocalDescription(OnSdp(), offer)
+                onSignal(session(OFFER, offer.description))
+            },
+            MediaConstraints()
+        )
+    }
+
     override fun send(text: String) {
         val buffer = DataChannel.Buffer(ByteBuffer.wrap(text.toByteArray()), false)
         channel?.send(buffer)
@@ -127,7 +141,11 @@ class WebRtcPeerTransport(
             override fun onBufferedAmountChange(previousAmount: Long) = Unit
 
             override fun onStateChange() {
-                if (data.state() == DataChannel.State.OPEN) _events.tryEmit(PeerEvent.Connected)
+                when (data.state()) {
+                    DataChannel.State.OPEN -> _events.tryEmit(PeerEvent.Connected)
+                    DataChannel.State.CLOSED -> _events.tryEmit(PeerEvent.Disconnected)
+                    else -> Unit
+                }
             }
 
             override fun onMessage(buffer: DataChannel.Buffer) {
@@ -143,8 +161,10 @@ class WebRtcPeerTransport(
         override fun onSignalingChange(state: PeerConnection.SignalingState) = Unit
 
         override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) {
-            if (state == PeerConnection.IceConnectionState.FAILED) {
-                _events.tryEmit(PeerEvent.Failed)
+            when (state) {
+                PeerConnection.IceConnectionState.FAILED,
+                PeerConnection.IceConnectionState.DISCONNECTED -> _events.tryEmit(PeerEvent.Disconnected)
+                else -> Unit
             }
         }
 

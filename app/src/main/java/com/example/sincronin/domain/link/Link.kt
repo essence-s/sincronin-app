@@ -16,6 +16,12 @@ sealed interface LinkStatus {
 
     /** La negociación no llegó a nada. */
     data object Failed : LinkStatus
+
+    /** El canal se cortó y se está reintentando. */
+    data object Reconnecting : LinkStatus
+
+    /** Se agotaron los reintentos: hay que volver a emparejar. */
+    data object Disconnected : LinkStatus
 }
 
 /**
@@ -54,20 +60,24 @@ data class LinkState(
         )
     }
 
-    /** Llegó algo del otro equipo; lo que venga de otro par se descarta. */
+    /** Llegó algo del otro equipo; lo que venga de otro par se descarta.
+     *  Si todavía no se conoce el par (controlador tras una reconexión), se
+     *  aprende de la primera oferta que llegue, igual que en el escritorio. */
     fun receive(from: Long, signal: LinkSignal): LinkStep {
-        if (peer == null || from != peer || status == LinkStatus.Failed) return LinkStep(this)
+        val knownPeer = peer ?: if (signal is LinkSignal.Offer) from else null
+        if (knownPeer == null || from != knownPeer || status == LinkStatus.Failed) return LinkStep(this)
+        val withPeer = if (peer == null) copy(peer = knownPeer) else this
         return when (signal) {
             // Una oferta se contesta, pero el enlace no está listo hasta que
             // el canal abra.
             is LinkSignal.Offer -> LinkStep(
-                state = copy(status = LinkStatus.Negotiating),
+                state = withPeer.copy(status = LinkStatus.Negotiating),
                 intent = LinkIntent.Respond
             )
 
-            is LinkSignal.Answer -> LinkStep(copy(status = LinkStatus.Ready))
+            is LinkSignal.Answer -> LinkStep(withPeer.copy(status = LinkStatus.Ready))
 
-            is LinkSignal.Candidate -> LinkStep(this)
+            is LinkSignal.Candidate -> LinkStep(withPeer)
         }
     }
 
@@ -79,4 +89,10 @@ data class LinkState(
 
     /** Otra vez desde cero: se olvida el par y se vuelve a empezar. */
     fun again(): LinkState = LinkState()
+
+    /** El canal se cortó: se está reintentando. */
+    fun reconnecting(): LinkState = copy(status = LinkStatus.Reconnecting)
+
+    /** Se agotaron los reintentos. */
+    fun disconnected(): LinkState = copy(status = LinkStatus.Disconnected)
 }

@@ -11,6 +11,9 @@ sealed interface PeerEvent {
     /** La negociación no llegó a nada. */
     data object Failed : PeerEvent
 
+    /** El canal se cortó: hay que reintentar. */
+    data object Disconnected : PeerEvent
+
     /** Llegó un mensaje del otro equipo por el canal. */
     data class Message(val text: String) : PeerEvent
 }
@@ -33,6 +36,9 @@ interface PeerTransport {
     fun accept(json: String)
 
     fun addCandidate(json: String)
+
+    /** Reinicia el ICE y rehace la oferta, conservando el canal. */
+    fun restart()
 
     fun send(text: String)
 

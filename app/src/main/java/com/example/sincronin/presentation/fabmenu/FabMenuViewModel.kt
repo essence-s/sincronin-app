@@ -5,6 +5,8 @@ import com.example.sincronin.BuildConfig
 import com.example.sincronin.adapters.OkHttpSignalingSocket
 import com.example.sincronin.domain.link.LinkIntent
 import com.example.sincronin.domain.link.LinkSignal
+import com.example.sincronin.domain.link.LinkStatus
+import com.example.sincronin.domain.link.RetryPlan
 import com.example.sincronin.domain.pairing.PairingError
 import com.example.sincronin.domain.pairing.PairingStatus
 import com.example.sincronin.domain.pairing.Role
@@ -15,8 +17,10 @@ import com.example.sincronin.ports.SignalingEvent
 import com.example.sincronin.ports.SignalingSocket
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -53,6 +57,9 @@ class FabMenuViewModel(
     private var remote: Long? = null
 
     private var peer: PeerTransport? = null
+
+    /** Escalera de reconexión en curso, si la hay. */
+    private var retryJob: Job? = null
 
     init {
         scope.launch { signaling.events.collect(::onSignalingEvent) }
@@ -107,10 +114,23 @@ class FabMenuViewModel(
         when (event) {
             is SignalingEvent.Joined -> {
                 myId = event.id
+                val wasDisconnected =
+                    _uiState.value.pairing.link.status == LinkStatus.Disconnected
                 _uiState.update { it.copy(pairing = it.pairing.joined(event.people)) }
+                // Si la señalización vuelve tras un corte y el enlace seguía
+                // caído, se reengancha solo: la escalera vuelve a correr.
+                if (wasDisconnected &&
+                    _uiState.value.pairing.link.status != LinkStatus.Closed
+                ) {
+                    _uiState.update {
+                        it.copy(pairing = it.pairing.copy(link = it.pairing.link.reconnecting()))
+                    }
+                    startReconnect()
+                }
             }
 
             is SignalingEvent.PeerJoined -> {
+                if (remote == null) remote = event.id
                 val pairing = _uiState.value.pairing.joined(event.people)
                 val step = pairing.link.peerPresent(event.id, pairing.role ?: Role.Host)
                 _uiState.update { it.copy(pairing = pairing.copy(link = step.state)) }
@@ -120,6 +140,7 @@ class FabMenuViewModel(
             }
 
             is SignalingEvent.PeerLeft -> {
+                cancelReconnect()
                 closePeer()
                 _uiState.update { it.copy(pairing = it.pairing.joined(event.people)) }
             }
@@ -127,6 +148,7 @@ class FabMenuViewModel(
             is SignalingEvent.Relayed -> onRelayed(event.from, event.json)
 
             is SignalingEvent.Failed -> {
+                cancelReconnect()
                 closePeer()
                 _uiState.update { it.copy(pairing = it.pairing.failed(event.error)) }
             }
@@ -143,12 +165,19 @@ class FabMenuViewModel(
             else -> return
         }
 
+        // El controlador aprende su controlado de la primera oferta que
+        // recibe, no del orden de los identificadores.
+        if (signal is LinkSignal.Offer && remote == null) remote = from
+
         val step = _uiState.value.pairing.link.receive(from, signal)
         _uiState.update { it.copy(pairing = it.pairing.copy(link = step.state)) }
 
         when {
-            // Una oferta se contesta en el acto: el invitado abre su lado.
-            step.intent == LinkIntent.Respond -> openPeer(from)?.answer(json)
+            // Una oferta se contesta en el acto. Si ya había canal (reconexión)
+            // se contesta sobre él; si no, se abre el lado del invitado.
+            step.intent == LinkIntent.Respond ->
+                if (peer == null) openPeer(from)?.answer(json) else peer?.answer(json)
+
             signal is LinkSignal.Answer -> peer?.accept(json)
             signal is LinkSignal.Candidate -> peer?.addCandidate(json)
             signal is LinkSignal.Offer -> Unit
@@ -157,8 +186,21 @@ class FabMenuViewModel(
 
     private fun onPeerEvent(event: PeerEvent) {
         when (event) {
-            PeerEvent.Connected -> _uiState.update {
-                it.copy(pairing = it.pairing.copy(link = it.pairing.link.ready()))
+            PeerEvent.Connected -> {
+                cancelReconnect()
+                _uiState.update {
+                    it.copy(pairing = it.pairing.copy(link = it.pairing.link.ready()))
+                }
+            }
+
+            PeerEvent.Disconnected -> {
+                val status = _uiState.value.pairing.link.status
+                if (status == LinkStatus.Ready || status == LinkStatus.Negotiating) {
+                    _uiState.update {
+                        it.copy(pairing = it.pairing.copy(link = it.pairing.link.reconnecting()))
+                    }
+                    startReconnect()
+                }
             }
 
             PeerEvent.Failed -> _uiState.update {
@@ -185,12 +227,46 @@ class FabMenuViewModel(
     }
 
     private fun closePeer() {
+        cancelReconnect()
         peer?.close()
         peer = null
         remote = null
     }
 
+    private fun cancelReconnect() {
+        retryJob?.cancel()
+        retryJob = null
+    }
+
+    /**
+     * Escalera de reconexión: solo el controlado reofrece; el controlador
+     * espera y contesta. Se para sola al volver el canal o al agotarse.
+     */
+    private fun startReconnect() {
+        if (retryJob?.isActive == true) return
+        val role = _uiState.value.pairing.role
+        retryJob = scope.launch {
+            var plan = RetryPlan()
+            while (!plan.isExhausted()) {
+                val delaySec = plan.nextDelaySeconds() ?: break
+                delay(delaySec * 1000L)
+                if (_uiState.value.pairing.link.status == LinkStatus.Ready) break
+                if (plan.nextIsRetry() && role == Role.Host) {
+                    peer?.restart()
+                }
+                plan = plan.advance()
+            }
+            if (_uiState.value.pairing.link.status != LinkStatus.Ready) {
+                _uiState.update {
+                    it.copy(pairing = it.pairing.copy(link = it.pairing.link.disconnected()))
+                }
+            }
+            retryJob = null
+        }
+    }
+
     override fun onCleared() {
+        cancelReconnect()
         closePeer()
         scope.cancel()
         signaling.close()

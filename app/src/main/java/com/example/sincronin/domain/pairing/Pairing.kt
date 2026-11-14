@@ -44,9 +44,12 @@ data class PairingState(
     /** El servidor confirmó la entrada y dice cuántas personas hay ahora. */
     fun joined(people: Int): PairingState {
         val alone = people <= 1
+        // El rol se asigna al entrar por primera vez; una reconexión no lo
+        // cambia, igual que en el escritorio (el controlado sigue siéndolo).
+        val newRole = role ?: if (alone) Role.Host else Role.Guest
         return copy(
             people = people,
-            role = if (alone) Role.Host else Role.Guest,
+            role = newRole,
             status = if (alone) PairingStatus.Waiting else PairingStatus.Connected,
             // Sin par no hay enlace: al salir el otro equipo se cierra.
             link = if (alone) LinkState() else link

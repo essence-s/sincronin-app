@@ -455,7 +455,8 @@ private fun statusColor(pairing: PairingState): Color = when (val status = pairi
     PairingStatus.Idle, PairingStatus.Waiting -> PanelMuted
     PairingStatus.Connected -> when (pairing.link.status) {
         LinkStatus.Ready -> PanelAccent
-        LinkStatus.Failed -> PanelError
+        LinkStatus.Failed, LinkStatus.Disconnected -> PanelError
+        LinkStatus.Reconnecting -> PanelMuted
         LinkStatus.Closed, LinkStatus.Negotiating -> PanelMuted
     }
     is PairingStatus.Failed -> PanelError
@@ -468,6 +469,8 @@ private fun statusText(pairing: PairingState): String = when (val status = pairi
         LinkStatus.Negotiating -> "${roleLabel(pairing)} · enlazando…"
         LinkStatus.Ready -> "${roleLabel(pairing)} · enlace listo"
         LinkStatus.Failed -> "No se pudo enlazar con el otro equipo"
+        LinkStatus.Reconnecting -> "${roleLabel(pairing)} · Reconectando…"
+        LinkStatus.Disconnected -> "${roleLabel(pairing)} · Sin conexión"
         LinkStatus.Closed -> "${roleLabel(pairing)} · ${pairing.people} en la sala"
     }
     is PairingStatus.Failed -> when (status.error) {

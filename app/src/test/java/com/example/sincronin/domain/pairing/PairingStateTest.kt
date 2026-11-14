@@ -53,4 +53,15 @@ class PairingStateTest {
         assertEquals(PairingStatus.Waiting, retried.status)
         assertEquals(code, retried.room)
     }
+
+    @Test
+    fun `una reconexion no cambia el rol ya asignado`() {
+        val host = PairingState().joining(code).joined(people = 1)
+        assertEquals(Role.Host, host.role)
+
+        // Vuelve a entrar con gente: sigue siendo anfitrión.
+        val reconnected = host.joined(people = 2)
+        assertEquals(Role.Host, reconnected.role)
+        assertEquals(PairingStatus.Connected, reconnected.status)
+    }
 }
