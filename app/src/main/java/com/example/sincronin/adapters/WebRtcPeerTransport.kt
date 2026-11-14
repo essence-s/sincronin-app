@@ -211,8 +211,16 @@ class WebRtcPeerTransport(
         }
     }
 
-    private fun session(type: String, description: String): String =
-        JSONObject().put("type", type).put("sdp", description).toString()
+    /**
+     * El cuerpo va como en el protocolo: el SDP es un objeto
+     * `{"type":"offer","sdp":"v=0..."}`, no el texto suelto. Mandarlo
+     * plano hacía que el otro lado (y este mismo al leerlo) no supiera
+     * sacar el SDP.
+     */
+    private fun session(type: String, description: String): String = JSONObject()
+        .put("type", type)
+        .put("sdp", JSONObject().put("type", type).put("sdp", description))
+        .toString()
 
     private fun sdpOf(json: String): String =
         runCatching { JSONObject(json).getJSONObject("sdp").getString("sdp") }.getOrDefault("")
