@@ -138,7 +138,10 @@ class FabMenuViewModel(
         } else {
             MediaCommand.Play
         }
-        sendToPeer(MediaMessages.command(command))
+        // Los comandos viajan por el canal de datos, como en el escritorio. La
+        // señalización es solo para el SDP y los candidatos: un "play" por ahí
+        // lo recibe el otro equipo como un mensaje que no entiende.
+        peer?.send(MediaMessages.command(command))
     }
 
     private fun enter(room: RoomCode) {

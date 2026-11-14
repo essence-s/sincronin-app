@@ -6,6 +6,11 @@
     <!-- Desde Android 17, hablar con el servidor en la LAN (192.168.x.x) necesita
          este permiso de runtime; sin él las conexiones mueren por timeout. -->
     <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+    <!-- WebRTC vigila la red al abrir la conexión: si no puede consultar el
+         estado (y el Wi-Fi) la excepción salta en su hilo nativo y aborta el
+         proceso justo después de emparejar. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />

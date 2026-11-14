@@ -37,6 +37,19 @@ class WebRtcPeerTransport(
     private var connection: PeerConnection? = null
     private var channel: DataChannel? = null
 
+    /**
+     * Candidatos que llegaron antes que la descripción remota.
+     *
+     * El otro equipo manda el SDP y sus candidatos seguidos, y los dos pueden
+     * adelantarse al `setRemoteDescription`. El SDK descarta un candidato sin
+     * descripción remota, así que se guardan y se meten en cuanto está: si no,
+     * el ICE se queda a medias y el canal nunca abre.
+     */
+    private val pendingCandidates = mutableListOf<IceCandidate>()
+
+    /** La descripción remota ya está puesta: los candidatos se pueden meter. */
+    private var remoteReady = false
+
     init {
         // Se puede llamar más de una vez, pero la segunda lanza.
         runCatching {
@@ -68,36 +81,42 @@ class WebRtcPeerTransport(
     override fun answer(json: String) {
         val pc = connect()
         pc.setRemoteDescription(
-            OnSdp {
-                pc.createAnswer(
-                    OnSdp { answer ->
-                        pc.setLocalDescription(OnSdp(), answer)
-                        onSignal(session(ANSWER, answer.description))
-                    },
-                    MediaConstraints()
-                )
-            },
+            OnSdp(
+                onSet = {
+                    flushCandidates()
+                    pc.createAnswer(
+                        OnSdp { answer ->
+                            pc.setLocalDescription(OnSdp(), answer)
+                            onSignal(session(ANSWER, answer.description))
+                        },
+                        MediaConstraints()
+                    )
+                }
+            ),
             SessionDescription(SessionDescription.Type.OFFER, sdpOf(json))
         )
     }
 
     override fun accept(json: String) {
         connect().setRemoteDescription(
-            OnSdp(),
+            OnSdp(onSet = ::flushCandidates),
             SessionDescription(SessionDescription.Type.ANSWER, sdpOf(json))
         )
     }
 
     override fun addCandidate(json: String) {
-        val pc = connection ?: return
         val candidate = runCatching { JSONObject(json).getJSONObject("candidate") }.getOrNull() ?: return
-        pc.addIceCandidate(
-            IceCandidate(
-                candidate.optString("sdpMid"),
-                candidate.optInt("sdpMLineIndex"),
-                candidate.optString("candidate")
-            )
+        val ice = IceCandidate(
+            candidate.optString("sdpMid"),
+            candidate.optInt("sdpMLineIndex"),
+            candidate.optString("candidate")
         )
+        // Todavía no se conoce la descripción remota: se guarda para después.
+        if (!remoteReady) {
+            pendingCandidates += ice
+            return
+        }
+        connection?.addIceCandidate(ice)
     }
 
     override fun restart() {
@@ -126,6 +145,8 @@ class WebRtcPeerTransport(
         connection?.close()
         connection?.dispose()
         connection = null
+        pendingCandidates.clear()
+        remoteReady = false
         factory.dispose()
     }
 
@@ -134,7 +155,19 @@ class WebRtcPeerTransport(
             listOf(PeerConnection.IceServer.builder(STUN).createIceServer())
         ),
         observer
-    )!!.also { connection = it }
+    )!!.also {
+        connection = it
+        remoteReady = false
+        pendingCandidates.clear()
+    }
+
+    /** Mete los candidatos que esperaban a que hubiera descripción remota. */
+    private fun flushCandidates() {
+        remoteReady = true
+        val pc = connection ?: return
+        pendingCandidates.forEach { pc.addIceCandidate(it) }
+        pendingCandidates.clear()
+    }
 
     private fun watch(data: DataChannel) {
         data.registerObserver(object : DataChannel.Observer {
@@ -196,11 +229,12 @@ class WebRtcPeerTransport(
 
     /** Lo mínimo del [SdpObserver]: lo que importa es el SDP creado. */
     private inner class OnSdp(
+        private val onSet: () -> Unit = {},
         private val onCreated: (SessionDescription) -> Unit = {}
     ) : SdpObserver {
         override fun onCreateSuccess(sdp: SessionDescription) = onCreated(sdp)
 
-        override fun onSetSuccess() = Unit
+        override fun onSetSuccess() = onSet()
 
         override fun onCreateFailure(error: String?) {
             _events.tryEmit(PeerEvent.Failed)

@@ -44,6 +44,16 @@ class OkHttpSignalingSocket(
 
     private var socket: WebSocket? = null
 
+    /**
+     * Generación del socket actual.
+     *
+     * Un socket reemplazado (al cambiar de sala, o al reintentar) sigue
+     * avisando: su `onFailure` llegaba cuando ya había otro abierto y
+     * programaba un reintento que lo cancelaba, y así en bucle. Cada aviso
+     * lleva su generación y los de un socket viejo se ignoran.
+     */
+    private var generation = 0
+
     /** Sala a la que se está yendo: el reintento vuelve a la misma. */
     private var room: RoomCode? = null
 
@@ -83,12 +93,16 @@ class OkHttpSignalingSocket(
     }
 
     private fun open(target: RoomCode) {
+        // Primero se cambia la generación y después se cancela el anterior:
+        // así el `onFailure` que provoca el cancel ya llega como viejo.
+        generation += 1
+        val epoch = generation
         socket?.cancel()
         people = 1
         val request = Request.Builder()
             .url("$baseUrl?room=${target.value}")
             .build()
-        socket = client.newWebSocket(request, Listener())
+        socket = client.newWebSocket(request, Listener(epoch))
     }
 
     /** Reintento con espera creciente y un poco de azar. */
@@ -106,13 +120,18 @@ class OkHttpSignalingSocket(
         }, wait, TimeUnit.MILLISECONDS)
     }
 
-    private inner class Listener : WebSocketListener() {
+    private inner class Listener(private val epoch: Int) : WebSocketListener() {
+
+        /** Si este socket sigue siendo el actual; si no, sus avisos no valen. */
+        private val isCurrent: Boolean get() = epoch == generation
 
         override fun onOpen(webSocket: WebSocket, response: Response) {
+            if (!isCurrent) return
             attempt = 0
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
+            if (!isCurrent) return
             val message = runCatching { JSONObject(text) }.getOrNull() ?: return
             when (message.optString("type")) {
                 "joined" -> {
@@ -144,11 +163,14 @@ class OkHttpSignalingSocket(
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
             // El servidor se está despidiendo: si no lo pedimos nosotros, se
             // vuelve a intentar cuando cierre.
-            if (!stopped) retryLater()
+            if (!isCurrent || stopped) return
+            retryLater()
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-            if (stopped) return
+            // Un socket reemplazado se cancela a propósito: su fallo no es un
+            // corte y no tiene que abrir otro.
+            if (!isCurrent || stopped) return
             if (response?.code == HTTP_BAD_REQUEST) {
                 // Código rechazado: reintentar no lo va a arreglar.
                 _events.tryEmit(SignalingEvent.Failed(PairingError.InvalidCode))
