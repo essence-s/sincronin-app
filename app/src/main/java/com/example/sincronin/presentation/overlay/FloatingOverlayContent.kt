@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntRect
 import com.example.sincronin.presentation.fabmenu.FabMenuUiState
+import com.example.sincronin.presentation.fabmenu.PanelTab
 import com.example.sincronin.presentation.fabmenu.components.ExpandingMenuFab
 import com.example.sincronin.ui.theme.SincroninTheme
 
@@ -60,7 +61,7 @@ private const val ScrimMaxAlpha = 0.32f
  * expansión siempre nace del sitio donde está el FAB ([fabRectPx]).
  *
  * [onClose] se dispara al tocar el fondo oscurecido; los demás eventos son los
- * del panel de Conexión y los resuelve el ViewModel.
+ * del panel y los resuelve el ViewModel.
  */
 @Composable
 fun FloatingOverlayContent(
@@ -69,6 +70,8 @@ fun FloatingOverlayContent(
     onClose: () -> Unit,
     onCodeChange: (String) -> Unit,
     onJoin: () -> Unit,
+    onTabSelect: (PanelTab) -> Unit,
+    onTogglePlayPause: () -> Unit,
     onCollapseFinished: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -116,6 +119,8 @@ fun FloatingOverlayContent(
             onClose = onClose,
             onCodeChange = onCodeChange,
             onJoin = onJoin,
+            onTabSelect = onTabSelect,
+            onTogglePlayPause = onTogglePlayPause,
             modifier = Modifier.fillMaxSize()
         )
     }
@@ -131,6 +136,25 @@ private fun FloatingOverlayContentPreview() {
             onClose = {},
             onCodeChange = {},
             onJoin = {},
+            onTabSelect = {},
+            onTogglePlayPause = {},
+            onCollapseFinished = {}
+        )
+    }
+}
+
+@Preview(showBackground = true, widthDp = 380, heightDp = 780)
+@Composable
+private fun FloatingOverlayControlsPreview() {
+    SincroninTheme {
+        FloatingOverlayContent(
+            state = FabMenuUiState(isExpanded = true, tab = PanelTab.Controls),
+            fabRectPx = IntRect(left = 300, top = 700, right = 356, bottom = 756),
+            onClose = {},
+            onCodeChange = {},
+            onJoin = {},
+            onTabSelect = {},
+            onTogglePlayPause = {},
             onCollapseFinished = {}
         )
     }

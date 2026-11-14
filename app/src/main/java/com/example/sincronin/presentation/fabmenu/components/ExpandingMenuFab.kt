@@ -3,6 +3,9 @@ package com.example.sincronin.presentation.fabmenu.components
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,7 +29,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -64,16 +66,19 @@ import com.example.sincronin.domain.pairing.PairingState
 import com.example.sincronin.domain.pairing.PairingStatus
 import com.example.sincronin.domain.pairing.Role
 import com.example.sincronin.presentation.fabmenu.FabMenuUiState
+import com.example.sincronin.presentation.fabmenu.PanelTab
 import com.example.sincronin.ui.theme.FabDark
 import kotlinx.coroutines.delay
 
 private val FabMargin = 20.dp
 
-/** Ancho del panel: el que necesita la fila del código con su botón de copiar. */
-private val PanelMaxWidth = 256.dp
+/** Medidas de la tarjeta en cada pestaña: Conexión es la más angosta. */
+private val ConnectionPanelWidth = 256.dp
+private val ConnectionPanelHeight = 176.dp
 
-/** Alto justo para cabecera, divisor, campo y línea de estado. */
-private val PanelHeight = 176.dp
+/** Controles necesita más ancho para el tema y más alto para la barra. */
+private val ControlsPanelWidth = 288.dp
+private val ControlsPanelHeight = 216.dp
 
 /** Radio de las esquinas: 28 dp en un botón de 56 dp es un círculo. */
 private val CircleRadius = 28.dp
@@ -92,15 +97,9 @@ private val PanelGradient = Brush.verticalGradient(
 /** Negro neutro del panel abierto: no depende de la paleta dinámica del tema. */
 private val PanelBase = Color(0xFF101010)
 
-private val PanelText = Color(0xFFF4F4F8)
-private val PanelSecondary = Color(0xFF8D8D99)
-private val PanelMuted = Color(0xFF6F6F7C)
-private val PanelAccent = Color(0xFF7C7CFF)
-private val PanelError = Color(0xFFFF7A7A)
-private val FieldBackground = Color(0xFF121212)
-
 /**
- * Botón flotante que crece hasta convertirse en el panel de Conexión.
+ * Botón flotante que crece hasta convertirse en la tarjeta de Conexión o de
+ * Controles.
  *
  * Todo el morph lo gobierna [progress] (0 = botón, 1 = panel), de modo que
  * tamaño, posición, radio, color y sombra avanzan juntos y el panel **crece
@@ -120,6 +119,8 @@ fun ExpandingMenuFab(
     onClose: () -> Unit,
     onCodeChange: (String) -> Unit,
     onJoin: () -> Unit,
+    onTabSelect: (PanelTab) -> Unit,
+    onTogglePlayPause: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
@@ -129,8 +130,26 @@ fun ExpandingMenuFab(
         val fabWidth = with(density) { fabRectPx.width.toDp() }
         val fabHeight = with(density) { fabRectPx.height.toDp() }
 
-        val panelWidth = minOf(maxWidth - FabMargin * 2, PanelMaxWidth)
-        val panelHeight = PanelHeight.coerceAtMost(maxHeight - FabMargin * 2)
+        // La tarjeta cambia de tamaño con la pestaña, animada para que no salte
+        // al cambiar de panel.
+        val targetWidth =
+            if (state.tab == PanelTab.Controls) ControlsPanelWidth else ConnectionPanelWidth
+        val targetHeight =
+            if (state.tab == PanelTab.Controls) ControlsPanelHeight else ConnectionPanelHeight
+
+        val panelWidth by animateDpAsState(
+            targetValue = minOf(maxWidth - FabMargin * 2, targetWidth),
+            animationSpec = tween(200),
+            label = "panelWidth"
+        )
+        val panelHeight by animateDpAsState(
+            targetValue = targetHeight
+                .coerceAtMost(maxHeight - FabMargin * 2)
+                .coerceAtLeast(0.dp),
+            animationSpec = tween(200),
+            label = "panelHeight"
+        )
+
         // El panel nace de la esquina inferior derecha del botón y se coloca
         // dejando [FabMargin] de aire con el borde, pero nunca más de lo que
         // permite seguir tapando el botón: un botón que viene de la lengüeta
@@ -214,13 +233,30 @@ fun ExpandingMenuFab(
                     .fillMaxSize()
                     .alpha(panelAlpha)
             ) {
-                ConnectionPanel(
-                    state = state,
-                    enabled = interactive,
-                    onClose = onClose,
-                    onCodeChange = onCodeChange,
-                    onJoin = onJoin
-                )
+                Crossfade(
+                    targetState = state.tab,
+                    animationSpec = tween(180),
+                    label = "panelTab"
+                ) { tab ->
+                    when (tab) {
+                        PanelTab.Connection -> ConnectionPanel(
+                            state = state,
+                            enabled = interactive,
+                            onTabSelect = onTabSelect,
+                            onClose = onClose,
+                            onCodeChange = onCodeChange,
+                            onJoin = onJoin
+                        )
+
+                        PanelTab.Controls -> ControlsPanel(
+                            state = state,
+                            enabled = interactive,
+                            onTabSelect = onTabSelect,
+                            onClose = onClose,
+                            onTogglePlayPause = onTogglePlayPause
+                        )
+                    }
+                }
             }
         }
     }
@@ -234,6 +270,7 @@ fun ExpandingMenuFab(
 private fun ConnectionPanel(
     state: FabMenuUiState,
     enabled: Boolean,
+    onTabSelect: (PanelTab) -> Unit,
     onClose: () -> Unit,
     onCodeChange: (String) -> Unit,
     onJoin: () -> Unit
@@ -243,21 +280,14 @@ private fun ConnectionPanel(
             .fillMaxSize()
             .padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 22.dp)
     ) {
-        // El aspa cierra desde la esquina de la tarjeta y no gasta fila propia.
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "TU SALA",
-                color = PanelMuted,
-                fontSize = 9.sp,
-                letterSpacing = 1.2.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.weight(1f)
-            )
-            CloseButton(enabled = enabled, onClose = onClose)
-        }
+        // La cabecera comparte fila con el código: las pestañas a la izquierda
+        // y el aspa en la esquina, sin gastar una fila propia.
+        PanelHeader(
+            tab = state.tab,
+            enabled = enabled,
+            onSelect = onTabSelect,
+            onClose = onClose
+        )
 
         // Copiar comparte fila con el código, así que su texto queda centrado
         // respecto a la cifra y no entre la etiqueta y el número.
@@ -363,28 +393,6 @@ private fun CodeField(
             }
         }
     )
-}
-
-/**
- * Cerrar desde la esquina superior derecha: un aspa pequeña y callada, sin una
- * fila propia que se comiera media tarjeta. Tocar el fondo también cierra.
- */
-@Composable
-private fun CloseButton(enabled: Boolean, onClose: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .size(24.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(enabled = enabled, onClick = onClose),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = Icons.Filled.Close,
-            contentDescription = "Cerrar menú",
-            tint = PanelMuted,
-            modifier = Modifier.size(14.dp)
-        )
-    }
 }
 
 /**

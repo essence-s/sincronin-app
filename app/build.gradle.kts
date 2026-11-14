@@ -56,6 +56,9 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.webrtc.android)
     testImplementation(libs.junit)
+    // org.json real en los tests: el android.jar de los unit tests solo tiene
+    // stubs que lanzan, y el dominio de medios lee y escribe JSON.
+    testImplementation(libs.org.json)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)

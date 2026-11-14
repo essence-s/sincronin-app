@@ -1,5 +1,6 @@
 package com.example.sincronin.presentation.fabmenu
 
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import com.example.sincronin.BuildConfig
 import com.example.sincronin.adapters.OkHttpSignalingSocket
@@ -7,6 +8,10 @@ import com.example.sincronin.domain.link.LinkIntent
 import com.example.sincronin.domain.link.LinkSignal
 import com.example.sincronin.domain.link.LinkStatus
 import com.example.sincronin.domain.link.RetryPlan
+import com.example.sincronin.domain.media.MediaCommand
+import com.example.sincronin.domain.media.MediaMessages
+import com.example.sincronin.domain.media.MediaSnapshot
+import com.example.sincronin.domain.media.PlaybackStatus
 import com.example.sincronin.domain.pairing.PairingError
 import com.example.sincronin.domain.pairing.PairingStatus
 import com.example.sincronin.domain.pairing.Role
@@ -29,7 +34,8 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 /**
- * Estado del botón flotante, de la sala y del enlace con el otro equipo.
+ * Estado del botón flotante, de la sala, del enlace con el otro equipo y de lo
+ * que se está reproduciendo.
  *
  * La vista (ventana flotante) solo observa y emite eventos; aquí se decide qué
  * significa cada cosa que contesta el servidor. El socket y el transporte
@@ -61,8 +67,16 @@ class FabMenuViewModel(
     /** Escalera de reconexión en curso, si la hay. */
     private var retryJob: Job? = null
 
+    /**
+     * Última foto recibida del otro equipo y cuándo llegó: con eso la posición
+     * avanza sola entre actualizaciones, sin pedirle nada a la red.
+     */
+    private var mediaBase: MediaSnapshot? = null
+    private var mediaAt = 0L
+
     init {
         scope.launch { signaling.events.collect(::onSignalingEvent) }
+        startMediaClock()
         // Desde que arranca el servicio se ofrece la sala propia: quien escriba
         // este código entra como invitado.
         enter(myCode)
@@ -74,6 +88,11 @@ class FabMenuViewModel(
 
     fun onDismiss() {
         _uiState.update { it.copy(isExpanded = false) }
+    }
+
+    /** Cambio de pestaña dentro del panel: Conexión o Controles. */
+    fun onTabSelect(tab: PanelTab) {
+        _uiState.update { it.copy(tab = tab) }
     }
 
     /**
@@ -102,6 +121,24 @@ class FabMenuViewModel(
             return
         }
         enter(room)
+    }
+
+    /**
+     * Play/pausa sobre lo que suena en el otro equipo. Solo se manda si el
+     * enlace está abierto y el reproductor de allá lo permite; el panel ya
+     * deshabilita el botón, esto es la última defensa.
+     */
+    fun onTogglePlayPause() {
+        val state = _uiState.value
+        if (state.pairing.link.status != LinkStatus.Ready) return
+        if (!state.media.hasSession || !state.media.canToggle) return
+
+        val command = if (state.media.status == PlaybackStatus.Playing) {
+            MediaCommand.Pause
+        } else {
+            MediaCommand.Play
+        }
+        sendToPeer(MediaMessages.command(command))
     }
 
     private fun enter(room: RoomCode) {
@@ -142,6 +179,7 @@ class FabMenuViewModel(
             is SignalingEvent.PeerLeft -> {
                 cancelReconnect()
                 closePeer()
+                clearMedia()
                 _uiState.update { it.copy(pairing = it.pairing.joined(event.people)) }
             }
 
@@ -150,6 +188,7 @@ class FabMenuViewModel(
             is SignalingEvent.Failed -> {
                 cancelReconnect()
                 closePeer()
+                clearMedia()
                 _uiState.update { it.copy(pairing = it.pairing.failed(event.error)) }
             }
         }
@@ -207,9 +246,43 @@ class FabMenuViewModel(
                 it.copy(pairing = it.pairing.copy(link = it.pairing.link.failed()))
             }
 
-            // Los mensajes del canal son la fase siguiente: ver qué suena.
-            is PeerEvent.Message -> Unit
+            is PeerEvent.Message -> onMediaMessage(event.text)
         }
+    }
+
+    /**
+     * Un mensaje del canal con el enlace ya abierto. El invitado pinta lo que
+     * publica el anfitrión; los mensajes que no son un estado se ignoran.
+     */
+    private fun onMediaMessage(text: String) {
+        // El anfitrión comparte; compartir desde el móvil llega en otra historia.
+        if (_uiState.value.pairing.role == Role.Host) return
+
+        val snapshot = MediaMessages.snapshot(text) ?: return
+        mediaBase = snapshot
+        mediaAt = SystemClock.elapsedRealtime()
+        _uiState.update { it.copy(media = snapshot) }
+    }
+
+    /** La posición avanza entre las fotos del otro equipo, sin tocar la red. */
+    private fun startMediaClock() {
+        scope.launch {
+            while (true) {
+                delay(MEDIA_CLOCK_MILLIS)
+                val base = mediaBase ?: continue
+                if (!base.hasSession || base.status != PlaybackStatus.Playing) continue
+
+                val position = base.positionAt(SystemClock.elapsedRealtime() - mediaAt)
+                if (position != _uiState.value.media.positionMs) {
+                    _uiState.update { it.copy(media = it.media.copy(positionMs = position)) }
+                }
+            }
+        }
+    }
+
+    private fun clearMedia() {
+        mediaBase = null
+        _uiState.update { it.copy(media = MediaSnapshot()) }
     }
 
     /** Abre el transporte con el par [id] y lo deja escuchando. */
@@ -277,5 +350,8 @@ class FabMenuViewModel(
         const val OFFER = "offer"
         const val ANSWER = "answer"
         const val ICE = "ice"
+
+        /** Con qué frecuencia se recalcula la posición entre fotos, en ms. */
+        const val MEDIA_CLOCK_MILLIS = 500L
     }
 }

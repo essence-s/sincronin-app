@@ -318,6 +318,8 @@ class FloatingOverlayService :
                         onClose = viewModel::onDismiss,
                         onCodeChange = viewModel::onCodeChange,
                         onJoin = viewModel::onJoin,
+                        onTabSelect = viewModel::onTabSelect,
+                        onTogglePlayPause = viewModel::onTogglePlayPause,
                         onCollapseFinished = { fabView.post { detachPanel() } }
                     )
                 }

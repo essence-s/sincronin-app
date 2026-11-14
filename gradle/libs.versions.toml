@@ -11,6 +11,7 @@ composeBom = "2026.02.01"
 savedstate = "1.3.2"
 okhttp = "4.12.0"
 webrtc = "150.7871.04"
+orgJson = "20231013"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -31,6 +32,7 @@ androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-
 androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+org-json = { group = "org.json", name = "json", version.ref = "orgJson" }
 webrtc-android = { group = "io.github.webrtc-sdk", name = "android", version.ref = "webrtc" }
 
 [plugins]
