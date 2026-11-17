@@ -4,14 +4,21 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -45,9 +52,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
@@ -68,13 +77,30 @@ import com.example.sincronin.domain.pairing.Role
 import com.example.sincronin.presentation.fabmenu.FabMenuUiState
 import com.example.sincronin.presentation.fabmenu.PanelTab
 import com.example.sincronin.ui.theme.FabDark
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlinx.coroutines.delay
 
 private val FabMargin = 20.dp
 
 /** Medidas de la tarjeta en cada pestaña: Conexión es la más angosta. */
 private val ConnectionPanelWidth = 256.dp
+
+/** Conexión sin par: el código, el campo para entrar y la línea de estado. */
 private val ConnectionPanelHeight = 176.dp
+
+/** Conexión con gente en la sala: código, órbitas y botón de salir. */
+private val ConnectedPanelHeight = 194.dp
+
+/** Lado del cuadro donde giran las bolitas de la sala. */
+private val OrbitSize = 46.dp
+
+/**
+ * Cuántas bolitas como mucho. Con más gente la órbita se vuelve un borrón: la
+ * cuenta exacta no hace falta, lo que importa es que la sala se mueve.
+ */
+private const val MAX_ORBIT_DOTS = 6
 
 /** Controles necesita más ancho para el tema y más alto para la barra. */
 private val ControlsPanelWidth = 288.dp
@@ -119,6 +145,7 @@ fun ExpandingMenuFab(
     onClose: () -> Unit,
     onCodeChange: (String) -> Unit,
     onJoin: () -> Unit,
+    onLeave: () -> Unit,
     onTabSelect: (PanelTab) -> Unit,
     onTogglePlayPause: () -> Unit,
     modifier: Modifier = Modifier
@@ -134,8 +161,13 @@ fun ExpandingMenuFab(
         // al cambiar de panel.
         val targetWidth =
             if (state.tab == PanelTab.Controls) ControlsPanelWidth else ConnectionPanelWidth
-        val targetHeight =
-            if (state.tab == PanelTab.Controls) ControlsPanelHeight else ConnectionPanelHeight
+        val targetHeight = when {
+            state.tab == PanelTab.Controls -> ControlsPanelHeight
+            // Con alguien más en la sala aparece la órbita y el botón de
+            // salir, y la tarjeta necesita un poco más de alto.
+            state.pairing.status == PairingStatus.Connected -> ConnectedPanelHeight
+            else -> ConnectionPanelHeight
+        }
 
         val panelWidth by animateDpAsState(
             targetValue = minOf(maxWidth - FabMargin * 2, targetWidth),
@@ -245,7 +277,8 @@ fun ExpandingMenuFab(
                             onTabSelect = onTabSelect,
                             onClose = onClose,
                             onCodeChange = onCodeChange,
-                            onJoin = onJoin
+                            onJoin = onJoin,
+                            onLeave = onLeave
                         )
 
                         PanelTab.Controls -> ControlsPanel(
@@ -263,8 +296,12 @@ fun ExpandingMenuFab(
 }
 
 /**
- * Panel de Conexión: mi código de sala para dictarlo, el campo para entrar a la
- * sala del otro equipo y una línea que dice cómo va el emparejamiento.
+ * Panel de Conexión, con las dos vistas del escritorio.
+ *
+ * Solo en la sala: mi código para dictarlo y el campo para entrar a la del
+ * otro equipo. Con gente en la sala: el mismo código, una órbita con una
+ * bolita por persona y el botón de salir; el campo desaparece porque ya no
+ * hace falta escribir nada.
  */
 @Composable
 private fun ConnectionPanel(
@@ -273,12 +310,15 @@ private fun ConnectionPanel(
     onTabSelect: (PanelTab) -> Unit,
     onClose: () -> Unit,
     onCodeChange: (String) -> Unit,
-    onJoin: () -> Unit
+    onJoin: () -> Unit,
+    onLeave: () -> Unit
 ) {
+    val inRoom = state.pairing.status == PairingStatus.Connected
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 22.dp)
+            .padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 18.dp)
     ) {
         // La cabecera comparte fila con el código: las pestañas a la izquierda
         // y el aspa en la esquina, sin gastar una fila propia.
@@ -308,39 +348,170 @@ private fun ConnectionPanel(
             CopyButton(code = state.myCode?.value, enabled = enabled)
         }
 
-        Spacer(Modifier.height(14.dp))
-        HorizontalDivider(color = Color.White.copy(alpha = 0.10f))
-        Spacer(Modifier.height(14.dp))
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            CodeField(
-                value = state.typedCode,
+        if (inRoom) {
+            RoomView(state = state, enabled = enabled, onLeave = onLeave)
+        } else {
+            JoiningView(
+                state = state,
                 enabled = enabled,
-                onValueChange = onCodeChange,
-                onDone = onJoin,
-                modifier = Modifier.weight(1f)
+                onCodeChange = onCodeChange,
+                onJoin = onJoin
             )
-            Spacer(Modifier.width(8.dp))
-            Button(
-                onClick = onJoin,
-                enabled = enabled && state.typedCode.isNotEmpty(),
-                shape = RoundedCornerShape(10.dp),
-                contentPadding = PaddingValues(horizontal = 14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = PanelAccent,
-                    contentColor = Color(0xFF0B0B12),
-                    disabledContainerColor = Color(0xFF23232C),
-                    disabledContentColor = PanelMuted
-                ),
-                modifier = Modifier.height(36.dp)
-            ) {
-                Text(text = "Entrar", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            }
         }
+    }
+}
 
-        Spacer(Modifier.weight(1f))
+/**
+ * Con gente en la sala: las órbitas de quiénes están, el rol y cómo salir.
+ *
+ * Es la vista conectada del escritorio. La órbita va centrada y sin texto al
+ * lado: se lee de un vistazo y deja la tarjeta respirando.
+ */
+@Composable
+private fun ColumnScope.RoomView(
+    state: FabMenuUiState,
+    enabled: Boolean,
+    onLeave: () -> Unit
+) {
+    Spacer(Modifier.height(10.dp))
+    HorizontalDivider(color = Color.White.copy(alpha = 0.10f))
+    Spacer(Modifier.height(6.dp))
 
-        StatusLine(state.pairing)
+    RoomOrbit(
+        people = state.pairing.people,
+        linked = state.pairing.link.status == LinkStatus.Ready,
+        modifier = Modifier.align(Alignment.CenterHorizontally)
+    )
+
+    Spacer(Modifier.weight(1f))
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        StatusLine(state.pairing, modifier = Modifier.weight(1f))
+        Spacer(Modifier.width(8.dp))
+        LeaveButton(enabled = enabled, onLeave = onLeave)
+    }
+}
+
+/** Solo en la sala: el campo para entrar a la del otro equipo. */
+@Composable
+private fun ColumnScope.JoiningView(
+    state: FabMenuUiState,
+    enabled: Boolean,
+    onCodeChange: (String) -> Unit,
+    onJoin: () -> Unit
+) {
+    Spacer(Modifier.height(14.dp))
+    HorizontalDivider(color = Color.White.copy(alpha = 0.10f))
+    Spacer(Modifier.height(14.dp))
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        CodeField(
+            value = state.typedCode,
+            enabled = enabled,
+            onValueChange = onCodeChange,
+            onDone = onJoin,
+            modifier = Modifier.weight(1f)
+        )
+        Spacer(Modifier.width(8.dp))
+        Button(
+            onClick = onJoin,
+            enabled = enabled && state.typedCode.isNotEmpty(),
+            shape = RoundedCornerShape(10.dp),
+            contentPadding = PaddingValues(horizontal = 14.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = PanelAccent,
+                contentColor = PanelInk,
+                disabledContainerColor = Color(0xFF23232C),
+                disabledContentColor = PanelMuted
+            ),
+            modifier = Modifier.height(36.dp)
+        ) {
+            Text(text = "Entrar", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+
+    Spacer(Modifier.weight(1f))
+
+    StatusLine(state.pairing)
+}
+
+/**
+ * Una bolita por persona en la sala girando despacio alrededor del centro,
+ * como las órbitas del escritorio.
+ *
+ * No consulta nada: el giro es una animación de Compose, así que sigue aunque
+ * el enlace esté caído. En ese caso las bolitas van apagadas y el anillo del
+ * centro se queda solo, que es justo lo que se ve cuando no hay enlace.
+ */
+@Composable
+private fun RoomOrbit(people: Int, linked: Boolean, modifier: Modifier = Modifier) {
+    val turn = rememberInfiniteTransition(label = "sala")
+    val degrees by turn.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 9_000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "giro"
+    )
+
+    val dots = people.coerceIn(1, MAX_ORBIT_DOTS)
+    val core = if (linked) PanelSoft else PanelMuted
+
+    Canvas(modifier = modifier.size(OrbitSize)) {
+        val orbit = size.minDimension * 0.32f
+        val dot = 5.5.dp.toPx()
+        val nucleus = 2.4.dp.toPx()
+
+        // El anillo marca el centro de la sala aunque todavía no haya enlace.
+        drawCircle(
+            color = PanelAccent.copy(alpha = 0.14f),
+            radius = orbit,
+            style = Stroke(width = 1.dp.toPx())
+        )
+
+        repeat(dots) { index ->
+            val phase = 2 * PI * (degrees / 360f + index.toFloat() / dots)
+            val dotCenter = Offset(
+                x = center.x + orbit * cos(phase).toFloat(),
+                y = center.y + orbit * sin(phase).toFloat()
+            )
+            drawCircle(
+                color = PanelAccent.copy(alpha = 0.22f),
+                radius = dot,
+                center = dotCenter
+            )
+            drawCircle(color = core, radius = nucleus, center = dotCenter)
+        }
+    }
+}
+
+/**
+ * Salir de la sala del otro equipo. Es el botón de desconectar del escritorio:
+ * pequeño, sin acento, para que no compita con lo que se está controlando.
+ */
+@Composable
+private fun LeaveButton(enabled: Boolean, onLeave: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .height(24.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.White.copy(alpha = 0.06f))
+            .clickable(enabled = enabled, onClick = onLeave)
+            .padding(horizontal = 9.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "Salir",
+            color = PanelSecondary,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1
+        )
     }
 }
 
@@ -446,8 +617,8 @@ private fun StatusDot(pairing: PairingState) {
 }
 
 @Composable
-private fun StatusLine(pairing: PairingState) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+private fun StatusLine(pairing: PairingState, modifier: Modifier = Modifier) {
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
         StatusDot(pairing)
         Spacer(Modifier.width(6.dp))
         Text(

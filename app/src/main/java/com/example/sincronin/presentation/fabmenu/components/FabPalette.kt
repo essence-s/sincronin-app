@@ -10,6 +10,9 @@ internal val PanelText = Color(0xFFF4F4F8)
 internal val PanelSecondary = Color(0xFF8D8D99)
 internal val PanelMuted = Color(0xFF6F6F7C)
 internal val PanelAccent = Color(0xFF7C7CFF)
+
+/** Acento aclarado: el núcleo de las bolitas de la sala. */
+internal val PanelSoft = Color(0xFFA9A9FF)
 internal val PanelError = Color(0xFFFF7A7A)
 internal val FieldBackground = Color(0xFF121212)
 

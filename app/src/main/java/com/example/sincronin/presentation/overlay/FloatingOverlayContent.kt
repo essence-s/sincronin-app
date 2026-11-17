@@ -70,6 +70,7 @@ fun FloatingOverlayContent(
     onClose: () -> Unit,
     onCodeChange: (String) -> Unit,
     onJoin: () -> Unit,
+    onLeave: () -> Unit,
     onTabSelect: (PanelTab) -> Unit,
     onTogglePlayPause: () -> Unit,
     onCollapseFinished: () -> Unit,
@@ -119,6 +120,7 @@ fun FloatingOverlayContent(
             onClose = onClose,
             onCodeChange = onCodeChange,
             onJoin = onJoin,
+            onLeave = onLeave,
             onTabSelect = onTabSelect,
             onTogglePlayPause = onTogglePlayPause,
             modifier = Modifier.fillMaxSize()
@@ -136,6 +138,7 @@ private fun FloatingOverlayContentPreview() {
             onClose = {},
             onCodeChange = {},
             onJoin = {},
+            onLeave = {},
             onTabSelect = {},
             onTogglePlayPause = {},
             onCollapseFinished = {}
@@ -153,6 +156,7 @@ private fun FloatingOverlayControlsPreview() {
             onClose = {},
             onCodeChange = {},
             onJoin = {},
+            onLeave = {},
             onTabSelect = {},
             onTogglePlayPause = {},
             onCollapseFinished = {}

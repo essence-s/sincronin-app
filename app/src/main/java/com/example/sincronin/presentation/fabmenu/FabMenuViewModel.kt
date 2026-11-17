@@ -13,6 +13,7 @@ import com.example.sincronin.domain.media.MediaMessages
 import com.example.sincronin.domain.media.MediaSnapshot
 import com.example.sincronin.domain.media.PlaybackStatus
 import com.example.sincronin.domain.pairing.PairingError
+import com.example.sincronin.domain.pairing.PairingState
 import com.example.sincronin.domain.pairing.PairingStatus
 import com.example.sincronin.domain.pairing.Role
 import com.example.sincronin.domain.room.RoomCode
@@ -121,6 +122,22 @@ class FabMenuViewModel(
             return
         }
         enter(room)
+    }
+
+    /**
+     * Salir de la sala del otro equipo: se cierra el enlace, se olvida lo que
+     * se estaba controlando y el panel vuelve a ofrecer mi propio código, como
+     * recién abierto el botón. Así el otro equipo me ve irme y su panel vuelve
+     * a pedir un código.
+     */
+    fun onLeave() {
+        closePeer()
+        clearMedia()
+        myId = null
+        _uiState.update { state ->
+            state.copy(typedCode = "", pairing = PairingState())
+        }
+        enter(myCode)
     }
 
     /**
