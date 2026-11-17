@@ -87,14 +87,15 @@ private val FabMargin = 20.dp
 /** Medidas de la tarjeta en cada pestaña: Conexión es la más angosta. */
 private val ConnectionPanelWidth = 256.dp
 
-/** Conexión sin par: el código, el campo para entrar y la línea de estado. */
-private val ConnectionPanelHeight = 176.dp
-
-/** Conexión con gente en la sala: código, órbitas y botón de salir. */
-private val ConnectedPanelHeight = 194.dp
+/**
+ * Alto único de la tarjeta. Las dos vistas de Conexión —solo o con gente en la
+ * sala— comparten el mismo alto, y Controles también: cambiar de vista cambia
+ * lo de dentro, nunca el tamaño de la tarjeta.
+ */
+private val PanelHeight = 216.dp
 
 /** Lado del cuadro donde giran las bolitas de la sala. */
-private val OrbitSize = 46.dp
+private val OrbitSize = 56.dp
 
 /**
  * Cuántas bolitas como mucho. Con más gente la órbita se vuelve un borrón: la
@@ -102,9 +103,8 @@ private val OrbitSize = 46.dp
  */
 private const val MAX_ORBIT_DOTS = 6
 
-/** Controles necesita más ancho para el tema y más alto para la barra. */
+/** Controles necesita más ancho para el tema y la barra de progreso. */
 private val ControlsPanelWidth = 288.dp
-private val ControlsPanelHeight = 216.dp
 
 /** Radio de las esquinas: 28 dp en un botón de 56 dp es un círculo. */
 private val CircleRadius = 28.dp
@@ -157,30 +157,19 @@ fun ExpandingMenuFab(
         val fabWidth = with(density) { fabRectPx.width.toDp() }
         val fabHeight = with(density) { fabRectPx.height.toDp() }
 
-        // La tarjeta cambia de tamaño con la pestaña, animada para que no salte
-        // al cambiar de panel.
+        // Solo el ancho cambia con la pestaña, y va animado para que no salte
+        // al cambiar de panel. El alto es el mismo en todas las vistas.
         val targetWidth =
             if (state.tab == PanelTab.Controls) ControlsPanelWidth else ConnectionPanelWidth
-        val targetHeight = when {
-            state.tab == PanelTab.Controls -> ControlsPanelHeight
-            // Con alguien más en la sala aparece la órbita y el botón de
-            // salir, y la tarjeta necesita un poco más de alto.
-            state.pairing.status == PairingStatus.Connected -> ConnectedPanelHeight
-            else -> ConnectionPanelHeight
-        }
 
         val panelWidth by animateDpAsState(
             targetValue = minOf(maxWidth - FabMargin * 2, targetWidth),
             animationSpec = tween(200),
             label = "panelWidth"
         )
-        val panelHeight by animateDpAsState(
-            targetValue = targetHeight
-                .coerceAtMost(maxHeight - FabMargin * 2)
-                .coerceAtLeast(0.dp),
-            animationSpec = tween(200),
-            label = "panelHeight"
-        )
+        val panelHeight = PanelHeight
+            .coerceAtMost(maxHeight - FabMargin * 2)
+            .coerceAtLeast(0.dp)
 
         // El panel nace de la esquina inferior derecha del botón y se coloca
         // dejando [FabMargin] de aire con el borde, pero nunca más de lo que
@@ -318,16 +307,19 @@ private fun ConnectionPanel(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 18.dp)
+            .padding(start = 20.dp, end = 18.dp, top = 14.dp, bottom = 18.dp)
     ) {
         // La cabecera comparte fila con el código: las pestañas a la izquierda
-        // y el aspa en la esquina, sin gastar una fila propia.
+        // y el aspa en la esquina, sin gastar una fila propia. El aire de abajo
+        // la separa del código para que se lean como dos bloques, menú y dato.
         PanelHeader(
             tab = state.tab,
             enabled = enabled,
             onSelect = onTabSelect,
             onClose = onClose
         )
+
+        Spacer(Modifier.height(14.dp))
 
         // Copiar comparte fila con el código, así que su texto queda centrado
         // respecto a la cifra y no entre la etiqueta y el número.
@@ -373,9 +365,11 @@ private fun ColumnScope.RoomView(
     enabled: Boolean,
     onLeave: () -> Unit
 ) {
-    Spacer(Modifier.height(10.dp))
+    Spacer(Modifier.height(12.dp))
     HorizontalDivider(color = Color.White.copy(alpha = 0.10f))
-    Spacer(Modifier.height(6.dp))
+
+    // La órbita queda centrada en el hueco que dejan la cabecera y el pie.
+    Spacer(Modifier.weight(1f))
 
     RoomOrbit(
         people = state.pairing.people,
@@ -403,7 +397,7 @@ private fun ColumnScope.JoiningView(
     onCodeChange: (String) -> Unit,
     onJoin: () -> Unit
 ) {
-    Spacer(Modifier.height(14.dp))
+    Spacer(Modifier.height(12.dp))
     HorizontalDivider(color = Color.White.copy(alpha = 0.10f))
     Spacer(Modifier.height(14.dp))
 

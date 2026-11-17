@@ -1,12 +1,14 @@
 package com.example.sincronin.presentation.fabmenu.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,10 +27,13 @@ import androidx.compose.ui.unit.sp
 import com.example.sincronin.presentation.fabmenu.PanelTab
 
 /**
- * Cabecera común de los dos paneles: las pestañas y el aspa de cerrar.
+ * Cabecera común de los dos paneles: el selector de vista y el aspa de cerrar.
  *
- * Es la versión horizontal del menú lateral del escritorio, que también cambia
- * entre Conexión y Controles dentro de la misma ventana.
+ * Las dos vistas van dentro de una misma píldora, como un control segmentado:
+ * así se lee que hay dos interfaces y que una está elegida, en vez de dos
+ * enlaces sueltos pegados al código. Es la versión horizontal del menú lateral
+ * del escritorio, que también cambia entre Conexión y Controles dentro de la
+ * misma ventana.
  */
 @Composable
 internal fun PanelHeader(
@@ -41,7 +46,14 @@ internal fun PanelHeader(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(11.dp))
+                .background(Color.White.copy(alpha = 0.05f))
+                .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(11.dp))
+                .padding(2.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
             TabButton(
                 label = "Conexión",
                 selected = tab == PanelTab.Connection,
@@ -60,6 +72,11 @@ internal fun PanelHeader(
     }
 }
 
+/**
+ * Una vista del selector. La elegida se queda con un fondo del acento y el
+ * texto aclarado; la otra es solo texto, para que el segmentado tenga un
+ * centro claro sin competir con el código de la sala.
+ */
 @Composable
 private fun TabButton(
     label: String,
@@ -69,17 +86,18 @@ private fun TabButton(
 ) {
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(7.dp))
-            .background(if (selected) PanelAccent.copy(alpha = 0.18f) else Color.Transparent)
+            .height(26.dp)
+            .clip(RoundedCornerShape(9.dp))
+            .background(if (selected) PanelAccent.copy(alpha = 0.20f) else Color.Transparent)
             .clickable(enabled = enabled && !selected, onClick = onClick)
-            .padding(horizontal = 7.dp, vertical = 4.dp),
+            .padding(horizontal = 13.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = label,
-            color = if (selected) PanelAccent else PanelMuted,
-            fontSize = 10.sp,
-            letterSpacing = 0.6.sp,
+            color = if (selected) PanelSoft else PanelSecondary,
+            fontSize = 11.sp,
+            letterSpacing = 0.3.sp,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
             maxLines = 1
         )

@@ -57,7 +57,7 @@ internal fun ControlsPanel(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(start = 20.dp, end = 16.dp, top = 14.dp, bottom = 18.dp)
+            .padding(start = 20.dp, end = 18.dp, top = 14.dp, bottom = 18.dp)
     ) {
         PanelHeader(
             tab = state.tab,
@@ -66,7 +66,7 @@ internal fun ControlsPanel(
             onClose = onClose
         )
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(14.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
