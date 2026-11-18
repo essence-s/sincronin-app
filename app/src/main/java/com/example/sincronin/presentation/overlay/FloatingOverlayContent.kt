@@ -73,6 +73,8 @@ fun FloatingOverlayContent(
     onLeave: () -> Unit,
     onTabSelect: (PanelTab) -> Unit,
     onTogglePlayPause: () -> Unit,
+    onSeekBackward: () -> Unit,
+    onSeekForward: () -> Unit,
     onCollapseFinished: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -123,6 +125,8 @@ fun FloatingOverlayContent(
             onLeave = onLeave,
             onTabSelect = onTabSelect,
             onTogglePlayPause = onTogglePlayPause,
+            onSeekBackward = onSeekBackward,
+            onSeekForward = onSeekForward,
             modifier = Modifier.fillMaxSize()
         )
     }
@@ -141,6 +145,8 @@ private fun FloatingOverlayContentPreview() {
             onLeave = {},
             onTabSelect = {},
             onTogglePlayPause = {},
+            onSeekBackward = {},
+            onSeekForward = {},
             onCollapseFinished = {}
         )
     }
@@ -159,6 +165,8 @@ private fun FloatingOverlayControlsPreview() {
             onLeave = {},
             onTabSelect = {},
             onTogglePlayPause = {},
+            onSeekBackward = {},
+            onSeekForward = {},
             onCollapseFinished = {}
         )
     }

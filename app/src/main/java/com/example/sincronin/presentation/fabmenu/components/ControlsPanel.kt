@@ -3,6 +3,7 @@ package com.example.sincronin.presentation.fabmenu.components
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,6 +25,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -46,13 +49,16 @@ internal fun ControlsPanel(
     enabled: Boolean,
     onTabSelect: (PanelTab) -> Unit,
     onClose: () -> Unit,
-    onTogglePlayPause: () -> Unit
+    onTogglePlayPause: () -> Unit,
+    onSeekBackward: () -> Unit,
+    onSeekForward: () -> Unit
 ) {
     val media = state.media
-    // El botón solo responde con el enlace abierto y si el reproductor del otro
-    // equipo permite play/pausa.
+    // Cada botón responde con el enlace abierto y solo si el reproductor del
+    // otro equipo permite esa acción.
     val linked = enabled && state.pairing.link.status == LinkStatus.Ready
     val canToggle = linked && media.hasSession && media.canToggle
+    val canSeek = linked && media.hasSession && media.canSeek
 
     Column(
         modifier = Modifier
@@ -68,40 +74,54 @@ internal fun ControlsPanel(
 
         Spacer(Modifier.height(14.dp))
 
+        Text(
+            text = media.title.ifEmpty { "Esperando al reproductor…" },
+            color = if (media.hasSession) PanelText else PanelSecondary,
+            fontSize = 13.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (media.artist.isNotBlank()) {
+            Spacer(Modifier.height(3.dp))
+            Text(
+                text = media.artist,
+                color = PanelSecondary,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        Spacer(Modifier.weight(1f))
+
+        // Transporte centrado: retroceder, play/pausa y avanzar, como la fila
+        // de controles del escritorio. Los saltos son de 10 s y solo se
+        // encienden si allá se puede buscar en la pista.
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.align(Alignment.CenterHorizontally),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = media.title.ifEmpty { "Esperando al reproductor…" },
-                    color = if (media.hasSession) PanelText else PanelSecondary,
-                    fontSize = 13.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (media.artist.isNotBlank()) {
-                    Spacer(Modifier.height(3.dp))
-                    Text(
-                        text = media.artist,
-                        color = PanelSecondary,
-                        fontSize = 11.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-
-            Spacer(Modifier.width(10.dp))
-
+            SeekButton(
+                label = "−10 s",
+                description = "Retroceder 10 segundos",
+                enabled = canSeek,
+                onClick = onSeekBackward
+            )
             PlayPauseButton(
                 playing = media.status == PlaybackStatus.Playing,
                 enabled = canToggle,
                 onClick = onTogglePlayPause
             )
+            SeekButton(
+                label = "+10 s",
+                description = "Avanzar 10 segundos",
+                enabled = canSeek,
+                onClick = onSeekForward
+            )
         }
 
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.height(12.dp))
 
         ProgressBar(positionMs = media.positionMs, durationMs = media.durationMs)
 
@@ -140,7 +160,10 @@ private fun PlayPauseButton(playing: Boolean, enabled: Boolean, onClick: () -> U
             .alpha(if (enabled) 1f else 0.3f)
             .clip(RoundedCornerShape(10.dp))
             .background(PanelAccent)
-            .clickable(enabled = enabled, onClick = onClick),
+            .clickable(enabled = enabled, onClick = onClick)
+            .semantics {
+                contentDescription = if (playing) "Pausar" else "Reproducir"
+            },
         contentAlignment = Alignment.Center
     ) {
         Canvas(modifier = Modifier.size(15.dp)) {
@@ -168,6 +191,38 @@ private fun PlayPauseButton(playing: Boolean, enabled: Boolean, onClick: () -> U
                 drawPath(triangle, PanelInk)
             }
         }
+    }
+}
+
+/**
+ * Salto de 10 s. Es secundario frente al play/pausa, así que va sin acento y
+ * se apaga cuando el reproductor del otro equipo no permite buscar.
+ */
+@Composable
+private fun SeekButton(
+    label: String,
+    description: String,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .height(34.dp)
+            .alpha(if (enabled) 1f else 0.3f)
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color.White.copy(alpha = 0.06f))
+            .clickable(enabled = enabled, onClick = onClick)
+            .semantics { contentDescription = description }
+            .padding(horizontal = 11.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = PanelSecondary,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1
+        )
     }
 }
 

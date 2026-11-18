@@ -4,7 +4,7 @@ package com.example.sincronin.domain.media
 enum class PlaybackStatus { Playing, Paused, Stopped, Unknown }
 
 /** Lo que el invitado le pide al anfitrión por el canal de datos. */
-enum class MediaCommand { Play, Pause }
+enum class MediaCommand { Play, Pause, SeekBackward, SeekForward }
 
 /**
  * Fotografía de lo que se está reproduciendo, tal como se dibuja en el panel.

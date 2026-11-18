@@ -321,6 +321,8 @@ class FloatingOverlayService :
                         onLeave = viewModel::onLeave,
                         onTabSelect = viewModel::onTabSelect,
                         onTogglePlayPause = viewModel::onTogglePlayPause,
+                        onSeekBackward = viewModel::onSeekBackward,
+                        onSeekForward = viewModel::onSeekForward,
                         onCollapseFinished = { fabView.post { detachPanel() } }
                     )
                 }

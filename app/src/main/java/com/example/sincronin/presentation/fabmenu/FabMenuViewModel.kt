@@ -161,6 +161,24 @@ class FabMenuViewModel(
         peer?.send(MediaMessages.command(command))
     }
 
+    /** Retroceder 10 s en lo que suena en el otro equipo. */
+    fun onSeekBackward() = seek(MediaCommand.SeekBackward)
+
+    /** Avanzar 10 s en lo que suena en el otro equipo. */
+    fun onSeekForward() = seek(MediaCommand.SeekForward)
+
+    /**
+     * Salto relativo en el reproductor del otro equipo. Igual que play/pausa,
+     * solo se manda con el enlace abierto y si allá se permite buscar; el
+     * panel ya apaga los botones, esto es la última defensa.
+     */
+    private fun seek(command: MediaCommand) {
+        val state = _uiState.value
+        if (state.pairing.link.status != LinkStatus.Ready) return
+        if (!state.media.hasSession || !state.media.canSeek) return
+        peer?.send(MediaMessages.command(command))
+    }
+
     private fun enter(room: RoomCode) {
         closePeer()
         _uiState.update { it.copy(pairing = it.pairing.joining(room)) }

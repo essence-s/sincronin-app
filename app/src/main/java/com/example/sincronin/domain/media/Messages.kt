@@ -13,12 +13,18 @@ object MediaMessages {
     fun command(command: MediaCommand): String = when (command) {
         MediaCommand.Play -> "play"
         MediaCommand.Pause -> "pause"
+        // Comandos relativos: el reproductor del otro equipo decide cuánto
+        // salta; acá solo viaja la intención (el escritorio usa 10 s).
+        MediaCommand.SeekBackward -> "seek_backward"
+        MediaCommand.SeekForward -> "seek_forward"
     }
 
     /** Lee un comando de texto; `null` si no es uno conocido. */
     fun parseCommand(text: String): MediaCommand? = when (text.trim()) {
         "play" -> MediaCommand.Play
         "pause" -> MediaCommand.Pause
+        "seek_backward" -> MediaCommand.SeekBackward
+        "seek_forward" -> MediaCommand.SeekForward
         else -> null
     }
 

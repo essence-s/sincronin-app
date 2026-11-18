@@ -148,6 +148,8 @@ fun ExpandingMenuFab(
     onLeave: () -> Unit,
     onTabSelect: (PanelTab) -> Unit,
     onTogglePlayPause: () -> Unit,
+    onSeekBackward: () -> Unit,
+    onSeekForward: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
@@ -275,7 +277,9 @@ fun ExpandingMenuFab(
                             enabled = interactive,
                             onTabSelect = onTabSelect,
                             onClose = onClose,
-                            onTogglePlayPause = onTogglePlayPause
+                            onTogglePlayPause = onTogglePlayPause,
+                            onSeekBackward = onSeekBackward,
+                            onSeekForward = onSeekForward
                         )
                     }
                 }
