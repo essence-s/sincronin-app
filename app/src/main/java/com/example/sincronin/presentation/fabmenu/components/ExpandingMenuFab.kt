@@ -15,6 +15,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -57,6 +58,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
@@ -227,6 +229,13 @@ fun ExpandingMenuFab(
                 .shadow(elevation = elevation, shape = shape, clip = false)
                 .clip(shape)
                 .background(containerColor)
+                // Los toques sobre la tarjeta se quedan en la tarjeta. El velo
+                // oscuro de detrás también es un `clickable` que ocupa toda la
+                // ventana, y sin esto cualquier toque en un texto, en una
+                // separación o en un hueco vacío llegaba hasta él y cerraba el
+                // menú como si se hubiera tocado fuera. Cerrar es solo el aspa
+                // (o el fondo, que está fuera de estos límites).
+                .pointerInput(Unit) { detectTapGestures(onTap = {}) }
         ) {
             // Fondo del diseño, solo mientras el panel está abierto.
             Box(
